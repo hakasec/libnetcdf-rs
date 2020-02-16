@@ -6,6 +6,7 @@ use std::error::Error;
 use std::path::Path;
 use std::convert::From;
 use std::string::FromUtf8Error;
+use std::marker::PhantomData;
 
 use crate::consts::*;
 
@@ -102,6 +103,131 @@ impl fmt::Debug for NCAttributeContainer<f64> {
 }
 
 #[derive(Debug)]
+pub struct NCData<T> {
+    raw: Vec<u8>,
+    _phantom: PhantomData<T>,
+}
+
+impl<T> NCData<T> {
+    pub fn new(raw: Vec<u8>) -> Self {
+        NCData {
+            raw,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn iter(&self) -> NCDataIter<T> {
+        NCDataIter::new(&self.raw)
+    }
+}
+
+#[derive(Debug)]
+pub struct NCDataIter<'a, T> {
+    raw: &'a [u8],
+    pos: usize,
+    _phantom: PhantomData<T>,
+}
+
+impl<'a, T> NCDataIter<'a, T> {
+    pub fn new(raw: &'a [u8]) -> Self {
+        NCDataIter {
+            raw,
+            pos: 0,
+            _phantom: PhantomData,
+        }
+    }
+
+    fn check_pos(&self) -> Option<()> {
+        let size = std::mem::size_of::<T>();
+        if self.pos + size > self.raw.len() {
+            None
+        } else {
+            Some(())
+        }
+    }
+
+    fn increment_pos(&mut self) {
+        let size = std::mem::size_of::<T>();
+        self.pos = self.pos + size;
+    }
+}
+
+impl Iterator for NCDataIter<'_, u8> {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.check_pos()?;
+        let n = self.raw[self.pos];
+        self.increment_pos();
+        
+        Some(n)
+    }
+}
+
+impl Iterator for NCDataIter<'_, char> {
+    type Item = char;
+
+    fn next(&mut self) -> Option<char> {
+        self.check_pos()?;
+        let c = self.raw[self.pos] as char;
+        self.increment_pos();
+
+        Some(c)
+    }
+}
+
+impl Iterator for NCDataIter<'_, i16> {
+    type Item = i16;
+
+    fn next(&mut self) -> Option<i16> {
+        self.check_pos()?;
+        let buf: [u8; 2] = [self.raw[self.pos], self.raw[self.pos+1]];
+        self.increment_pos();
+        
+        Some(i16::from_be_bytes(buf))
+    }
+}
+
+impl Iterator for NCDataIter<'_, i32> {
+    type Item = i32;
+
+    fn next(&mut self) -> Option<i32> {
+        self.check_pos()?;
+        let s = &self.raw[self.pos..self.pos+4];
+        let buf: [u8; 4] = [s[0], s[1], s[2], s[3]];
+        self.increment_pos();
+        
+        Some(i32::from_be_bytes(buf))
+    }
+}
+
+impl Iterator for NCDataIter<'_, f32> {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<f32> {
+        self.check_pos()?;
+        let s = &self.raw[self.pos..self.pos+4];
+        let buf: [u8; 4] = [s[0], s[1], s[2], s[3]];
+        self.increment_pos();
+        
+        Some(f32::from_be_bytes(buf))
+    }
+}
+
+impl Iterator for NCDataIter<'_, f64> {
+    type Item = f64;
+
+    fn next(&mut self) -> Option<f64> {
+        self.check_pos()?;
+        let s = &self.raw[self.pos..self.pos+8];
+        let buf: [u8; 8] = [s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]];
+        self.increment_pos();
+
+        Some(f64::from_be_bytes(buf))
+    }
+}
+
+#[derive(Debug)]
 pub enum NCVariable {
     Byte(NCVariableContainer<u8>),
     Char(NCVariableContainer<char>),
@@ -116,7 +242,7 @@ pub struct NCVariableContainer<T> {
     name: String,
     dimids: Vec<u32>,
     attributes: Vec<NCAttribute>,
-    data: Vec<T>,
+    data: NCData<T>,
 }
 
 #[derive(Debug)]
@@ -351,69 +477,44 @@ impl NCFile {
         // seek to offset
         r.seek(io::SeekFrom::Start(offset))?;
 
+        let data = read_bytes(r, vsize)?;
         let var = match nctype {
-            NC_BYTE => {
-                NCVariable::Byte(
-                    NCVariableContainer::<u8> {
-                        name,
-                        dimids,
-                        attributes,
-                        data: read_bytes(r, vsize)?,
-                    }
-                )
-            },
-            NC_CHAR => {
-                let raw = read_bytes(r, vsize)?;
-
-                NCVariable::Char(
-                    NCVariableContainer::<char> {
-                        name,
-                        dimids,
-                        attributes,
-                        data: String::from_utf8(raw)?.chars().collect(),
-                    }
-                )
-            },
-            NC_SHORT => {
-                NCVariable::Short(
-                    NCVariableContainer::<i16> {
-                        name,
-                        dimids,
-                        attributes,
-                        data: read_i16_list(r, vsize / 2)?,
-                    }
-                )
-            },
-            NC_INT => {
-                NCVariable::Int(
-                    NCVariableContainer::<i32> {
-                        name,
-                        dimids,
-                        attributes,
-                        data: read_i32_list(r, vsize / 4)?,
-                    }
-                )
-            },
-            NC_FLOAT => {
-                NCVariable::Float(
-                    NCVariableContainer::<f32> {
-                        name,
-                        dimids,
-                        attributes,
-                        data: read_f32_list(r, vsize / 4)?,
-                    }
-                )
-            },
-            NC_DOUBLE => {
-                NCVariable::Double(
-                    NCVariableContainer::<f64> {
-                        name,
-                        dimids,
-                        attributes,
-                        data: read_f64_list(r, vsize / 8)?,
-                    }
-                )
-            },
+            NC_BYTE => NCVariable::Byte(NCVariableContainer::<u8> {
+                name,
+                dimids,
+                attributes,
+                data: NCData::new(data),
+            }),
+            NC_CHAR => NCVariable::Char(NCVariableContainer::<char> {
+                name,
+                dimids,
+                attributes,
+                data: NCData::new(data),
+            }),
+            NC_SHORT => NCVariable::Short(NCVariableContainer::<i16> {
+                name,
+                dimids,
+                attributes,
+                data: NCData::new(data),
+            }),
+            NC_INT => NCVariable::Int(NCVariableContainer::<i32> {
+                name,
+                dimids,
+                attributes,
+                data: NCData::new(data),
+            }),
+            NC_FLOAT => NCVariable::Float(NCVariableContainer::<f32> {
+                name,
+                dimids,
+                attributes,
+                data: NCData::new(data),
+            }),
+            NC_DOUBLE => NCVariable::Double(NCVariableContainer::<f64> {
+                name,
+                dimids,
+                attributes,
+                data: NCData::new(data),
+            }),
 
             _ => return Err(ParseError::new("unknown type")),
         };
@@ -609,6 +710,11 @@ mod test {
             } else {
                 panic!("first attribute of first variable isn't Char");
             }
+
+            let mut iter = n.data.iter();
+            assert_eq!(iter.next().unwrap(), -24.95);
+            assert_eq!(iter.next().unwrap(), -24.85);
+            assert_eq!(iter.next().unwrap(), -24.75);
         } else {
             panic!("first variable isn't Float");
         }

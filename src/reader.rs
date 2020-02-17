@@ -102,7 +102,6 @@ impl fmt::Debug for NCAttributeContainer<f64> {
     }
 }
 
-#[derive(Debug)]
 pub struct NCData<T> {
     raw: Vec<u8>,
     _phantom: PhantomData<T>,
@@ -118,6 +117,14 @@ impl<T> NCData<T> {
 
     pub fn iter(&self) -> NCDataIter<T> {
         NCDataIter::new(&self.raw)
+    }
+}
+
+impl<T> fmt::Debug for NCData<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NCData")
+            .field("data", &format!("[sequence of {} bytes]", self.raw.len()))
+            .finish()
     }
 }
 
@@ -701,6 +708,8 @@ mod test {
     #[test]
     fn it_parses_variables() {
         let f = open_sample1();
+
+        println!("{:#?}", f);
 
         if let NCVariable::Float(n) = &f.variables[0] {
             assert_eq!(n.name, "longitude");

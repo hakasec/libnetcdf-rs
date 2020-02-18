@@ -1,6 +1,8 @@
 mod consts;
 mod reader;
 
+pub use crate::reader::*;
+
 #[cfg(test)]
 mod tests {
     #[test]

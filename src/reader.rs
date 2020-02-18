@@ -12,8 +12,8 @@ use crate::consts::*;
 
 #[derive(Debug)]
 pub struct NCDimension {
-    name: String,
-    length: u32,
+    pub name: String,
+    pub length: u32,
 }
 
 #[derive(Debug)]
@@ -27,8 +27,8 @@ pub enum NCAttribute {
 }
 
 pub struct NCAttributeContainer<T> {
-    name: String,
-    values: Vec<T>,
+    pub name: String,
+    pub values: Vec<T>,
 }
 
 impl<T> NCAttributeContainer<T> {
@@ -246,10 +246,10 @@ pub enum NCVariable {
 
 #[derive(Debug)]
 pub struct NCVariableContainer<T> {
-    name: String,
-    dimids: Vec<u32>,
-    attributes: Vec<NCAttribute>,
-    data: NCData<T>,
+    pub name: String,
+    pub dimids: Vec<u32>,
+    pub attributes: Vec<NCAttribute>,
+    pub data: NCData<T>,
 }
 
 #[derive(Debug)]
@@ -297,11 +297,11 @@ type Result<T> = result::Result<T, ParseError>;
 
 #[derive(Debug)]
 pub struct NCFile {
-    version: u8,
-    numrecs: u32,
-    dimensions: Vec<NCDimension>,
-    attributes: Vec<NCAttribute>,
-    variables: Vec<NCVariable>,
+    pub version: u8,
+    pub numrecs: u32,
+    pub dimensions: Vec<NCDimension>,
+    pub attributes: Vec<NCAttribute>,
+    pub variables: Vec<NCVariable>,
 }
 
 impl NCFile {
